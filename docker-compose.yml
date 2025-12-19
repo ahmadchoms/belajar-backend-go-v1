@@ -1,49 +1,35 @@
 version: '3.8'
 
 services:
-  # === SERVICE 1: DATABASE ===
   db:
     image: postgres:alpine
     container_name: postgres-inventory
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: rahasia
-      POSTGRES_DB: belajargo
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
-      - "5432:5432" # Biar kamu tetap bisa cek DB dari laptop
+      - "5432:5432"
     volumes:
-      - pg_data_compose:/var/lib/postgresql/data # Volume agar data awet
+      - pg_data_compose:/var/lib/postgresql/data
 
-  # === SERVICE 2: APLIKASI GO ===
   redis:
     image: redis:alpine
     container_name: redis-inventory
     ports:
       - "6379:6379"
-  
-  # === SERVICE 2: APLIKASI GO ===
+
   api:
-    build: . # Build dari Dockerfile di folder ini
+    build: .
     container_name: go-inventory-api
     ports:
-      - "8080:8080"
-    environment:
-      # PERHATIKAN INI!
-      # Kita tidak pakai 'localhost' atau 'host.docker.internal' lagi.
-      # Kita pakai nama service di atas yaitu "db".
-      # Docker otomatis membuat DNS internal: "db" -> IP Address Database.
-      - DB_HOST=db 
-      - DB_PORT=5432
-      - DB_USER=root
-      - DB_PASSWORD=rahasia
-      - DB_NAME=belajargo
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - "${APP_PORT}:8080"
+    env_file:
+      - .env
     depends_on:
-      - db # Pastikan DB nyala dulu baru Aplikasi start
+      - db
       - redis
     restart: on-failure
 
-# Definisi Volume
 volumes:
   pg_data_compose:
