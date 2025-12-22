@@ -1,0 +1,69 @@
+name: Go Backend CI
+
+# Kapan robot ini bekerja?
+# Setiap kali ada Push atau Pull Request ke branch main
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest # Robotnya pakai OS Linux Ubuntu
+
+    # Siapkan Service Pendukung (Database & Redis)
+    # Ini penting supaya 'go test' yang butuh DB tidak error
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        # Healthcheck: Pastikan DB nyala sebelum test jalan
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      # 1. Ambil kodingan kamu dari repo
+      - uses: actions/checkout@v4
+
+      # 2. Install Go di komputer robot
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.23"
+
+      # 3. Download library (go mod tidy)
+      - name: Install Dependencies
+        run: go mod download
+
+      # 4. Jalankan Unit Test
+      # Kita set env variable agar cocok dengan service di atas
+      - name: Run Unit Tests
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: ${{ secrets.POSTGRES_USER }}
+          DB_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DB_NAME: ${{ secrets.POSTGRES_DB }}
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: go test ./... -v -cover
+
+      # 5. Coba Build (Simulasi Production)
+      # Memastikan kode bisa dicompile jadi binary
+      - name: Build
+        run: go build -o main .

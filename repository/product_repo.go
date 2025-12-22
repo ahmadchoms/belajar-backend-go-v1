@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"phase3-api-architecture/models"
 	"time"
@@ -144,6 +145,51 @@ func (r *ProductRepository) Delete(id int) error {
 
 	r.Redis.Del(ctx, "products:all")
 	r.Redis.Del(ctx, fmt.Sprintf("product:%d", id))
+
+	return nil
+}
+
+func (r *ProductRepository) Checkout(ctx context.Context, userID int, req models.CheckoutRequest) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	queryUpdate := `
+		UPDATE products 
+		SET stock = stock - $1 
+		WHERE id = $2 AND stock >= $1 
+		RETURNING price`
+
+	var pricePerItem int
+	err = tx.QueryRowContext(ctx, queryUpdate, req.Quantity, req.ProductID).Scan(&pricePerItem)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return errors.New("stok tidak mencukupi atau produk tidak ditemukan")
+		}
+		return err
+	}
+
+	totalPrice := pricePerItem * req.Quantity
+
+	queryInsert := `
+		INSERT INTO transactions (user_id, product_id, quantity, total_price) 
+		VALUES ($1, $2, $3, $4)`
+
+	_, err = tx.ExecContext(ctx, queryInsert, userID, req.ProductID, req.Quantity, totalPrice)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	r.Redis.Del(ctx, "products:all")
+	r.Redis.Del(ctx, fmt.Sprintf("product:%d", req.ProductID))
 
 	return nil
 }

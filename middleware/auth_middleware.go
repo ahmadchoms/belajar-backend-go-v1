@@ -28,6 +28,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), "role", claims.Role)
+		ctx = context.WithValue(r.Context(), "user_id", claims.UserID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

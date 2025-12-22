@@ -214,3 +214,40 @@ func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request, i
 	utils.ResponseJSON(w, http.StatusOK, "Produk berhasil dihapus", nil)
 
 }
+
+// / HandleCheckout godoc
+// @Summary      Beli Produk
+// @Description  User membeli produk (mengurangi stok dan catat transaksi)
+// @Tags         Transactions
+// @Accept       json
+// @Produce      json
+// @Param        request body models.CheckoutRequest true "Data Pembelian"  <-- Pastikan model ini ada
+// @Success      200  {object}  utils.APIResponse
+// @Failure      400  {object}  utils.APIResponse
+// @Security     BearerAuth
+// @Router       /checkout [post]
+func (h *ProductHandler) HandleCheckout(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(int)
+	if !ok {
+		utils.ResponseError(w, http.StatusUnauthorized, "User ID tidak valid!")
+		return
+	}
+
+	var req models.CheckoutRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.ResponseError(w, http.StatusBadRequest, "Format input salah!")
+		return
+	}
+
+	if err := validate.Struct(req); err != nil {
+		utils.ResponseError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.Repo.Checkout(r.Context(), userID, req); err != nil {
+		utils.ResponseError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.ResponseJSON(w, http.StatusOK, "Pembelian berhasil", nil)
+}

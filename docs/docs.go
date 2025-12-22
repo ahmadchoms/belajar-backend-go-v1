@@ -19,6 +19,51 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/checkout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "User membeli produk (mengurangi stok dan catat transaksi)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Beli Produk",
+                "parameters": [
+                    {
+                        "description": "Data Pembelian",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CheckoutRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/login": {
             "post": {
                 "description": "Mengecek email \u0026 password, lalu mengembalikan token JWT",
@@ -356,6 +401,21 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "models.CheckoutRequest": {
+            "type": "object",
+            "required": [
+                "product_id",
+                "quantity"
+            ],
+            "properties": {
+                "product_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.LoginResponse": {
             "type": "object",
             "properties": {

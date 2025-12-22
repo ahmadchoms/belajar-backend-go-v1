@@ -1,5 +1,15 @@
 basePath: /
 definitions:
+  models.CheckoutRequest:
+    properties:
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
   models.LoginResponse:
     properties:
       access_token:
@@ -51,6 +61,34 @@ info:
   title: Inventory API
   version: "2.0"
 paths:
+  /checkout:
+    post:
+      consumes:
+      - application/json
+      description: User membeli produk (mengurangi stok dan catat transaksi)
+      parameters:
+      - description: Data Pembelian
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CheckoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Beli Produk
+      tags:
+      - Transactions
   /login:
     post:
       consumes:

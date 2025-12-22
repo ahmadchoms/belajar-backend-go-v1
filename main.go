@@ -61,30 +61,6 @@ func main() {
 
 	defer db.Close()
 
-	queries := []string{`
-		CREATE TABLE IF NOT EXISTS products (
-			id SERIAL PRIMARY KEY,
-			name TEXT NOT NULL,
-			price INT NOT NULL,
-			stock INT NOT NULL
-		)`,
-		`
-		CREATE TABLE IF NOT EXISTS users (
-			id SERIAL PRIMARY KEY,
-			email VARCHAR(255) UNIQUE NOT NULL,
-			password VARCHAR(255) NOT NULL,
-			role VARCHAR(20) NOT NULL DEFAULT 'user',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-	}
-
-	for _, q := range queries {
-		_, err := db.Exec(q)
-		if err != nil {
-			log.Fatalf("Gagal menjalankan query: %v\nError: %v", q, err)
-		}
-	}
-
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", redisHost, redisPort),
 	})
@@ -125,6 +101,9 @@ func main() {
 
 	// Gunakan fungsi spesifik 'GetProductByID'
 	mux.Handle("GET /products/{id}", stackAuth(http.HandlerFunc(productHandler.HandleGetProductByID)))
+
+	// Gunakan fungsi spesifik 'HandleCheckout'
+	mux.Handle("POST /checkout", stackAuth(http.HandlerFunc(productHandler.HandleCheckout)))
 
 	// --- 3. ADMIN ROUTES ---
 	// Create
