@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package inventory;
+
+// "./pb" artinya folder pb relatif dari tempat kita generate
+option go_package = "phase3-api-architecture/pb";
+
+// Definisikan Service (Fungsi apa yang tersedia?)
+service InventoryService {
+  // User kirim ID, Server balas Stok
+  rpc GetStock (GetStockRequest) returns (GetStockResponse);
+}
+
+// Definisikan Pesan (Bentuk datanya gimana?)
+message GetStockRequest {
+  int32 id = 1; // ID Produk
+}
+
+message GetStockResponse {
+  int32 id = 1;
+  string name = 2;
+  int32 stock = 3;
+}

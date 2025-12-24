@@ -24,12 +24,37 @@ services:
     container_name: go-inventory-api
     ports:
       - "${APP_PORT}:8080"
+      - "50051:50051"
     env_file:
       - .env
     depends_on:
       - db
       - redis
     restart: on-failure
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    restart: on-failure
+    deploy:
+      mode: replicated
+      replicas: 3 # Menjalankan 3 replika worker
+
+  nginx:
+    image: nginx:alpine
+    container_name: gateway-nginx
+    ports:
+      - "80:80" # Buka Pintu Utama (HTTP)
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
 
 volumes:
   pg_data_compose:

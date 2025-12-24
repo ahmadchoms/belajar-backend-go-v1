@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"phase3-api-architecture/handler"
 	"phase3-api-architecture/middleware"
+	pb "phase3-api-architecture/pb/proto/inventory"
 	"phase3-api-architecture/repository"
 	"syscall"
 	"time"
@@ -19,6 +21,8 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // @title           Inventory API
@@ -69,6 +73,26 @@ func main() {
 	productHandler := &handler.ProductHandler{Repo: productRepo}
 	userRepo := &repository.UserRepository{DB: db}
 	authHandler := &handler.AuthHandler{Repo: userRepo}
+
+	go func() {
+		lis, err := net.Listen("tcp", "[::]:50051") // Port gRPC biasanya
+		if err != nil {
+			log.Fatalf("Gagal listen port 50051: %v", err)
+		}
+
+		grpcServer := grpc.NewServer()
+
+		// Register Handler ke Server gRPC
+		inventoryGrpcHandler := &handler.GrpcInventoryHandler{Repo: productRepo}
+		pb.RegisterInventoryServiceServer(grpcServer, inventoryGrpcHandler)
+
+		reflection.Register(grpcServer)
+
+		fmt.Println("gRPC Server Listening at :50051")
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("Gagal start gRPC: %v", err)
+		}
+	}()
 
 	mux := http.NewServeMux()
 

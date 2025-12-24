@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"phase3-api-architecture/internal/worker"
 	"phase3-api-architecture/models"
 	"time"
 
@@ -149,7 +150,7 @@ func (r *ProductRepository) Delete(id int) error {
 	return nil
 }
 
-func (r *ProductRepository) Checkout(ctx context.Context, userID int, req models.CheckoutRequest) error {
+func (r *ProductRepository) Checkout(ctx context.Context, userID int, userEmail string, req models.CheckoutRequest) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -186,6 +187,20 @@ func (r *ProductRepository) Checkout(ctx context.Context, userID int, req models
 
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+
+	task := worker.TaskSendInvoice{
+		UserID:     userID,
+		Email:      userEmail,
+		ProductID:  req.ProductID,
+		TotalPrice: totalPrice,
+	}
+
+	taskPayload, _ := json.Marshal(task)
+
+	err = r.Redis.RPush(ctx, worker.QueueInvoice, taskPayload).Err()
+	if err != nil {
+		fmt.Printf("Gagal kirim task ke Redis: %v\n", err)
 	}
 
 	r.Redis.Del(ctx, "products:all")

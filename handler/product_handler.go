@@ -233,6 +233,11 @@ func (h *ProductHandler) HandleCheckout(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	userEmail, ok := r.Context().Value("email").(string)
+	if !ok {
+		userEmail = ""
+	}
+
 	var req models.CheckoutRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.ResponseError(w, http.StatusBadRequest, "Format input salah!")
@@ -244,10 +249,10 @@ func (h *ProductHandler) HandleCheckout(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.Repo.Checkout(r.Context(), userID, req); err != nil {
+	if err := h.Repo.Checkout(r.Context(), userID, userEmail, req); err != nil {
 		utils.ResponseError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	utils.ResponseJSON(w, http.StatusOK, "Pembelian berhasil", nil)
+	utils.ResponseJSON(w, http.StatusOK, "Pembelian berhasil, invoice akan dikirim via email", nil)
 }
