@@ -27,24 +27,28 @@ services:
       - "50051:50051"
     env_file:
       - .env
+    environment:
+      - OTEL_COLLECTOR_ADDR=otel-collector:4317
     depends_on:
       - db
       - redis
+      - otel-collector
     restart: on-failure
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    container_name: go-kafka-worker
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      - KAFKA_BROKERS=kafka:9093
+      - ELASTICSEARCH_ADDRESS=http://elasticsearch:9200
     depends_on:
-      - redis
-    restart: on-failure
+      - kafka
     deploy:
       mode: replicated
-      replicas: 3 # Menjalankan 3 replika worker
+      replicas: 1 # Coba 1 dulu, nanti kita scale
+    restart: on-failure
 
   nginx:
     image: nginx:alpine
@@ -56,5 +60,91 @@ services:
     depends_on:
       - api
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.88.0
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8889:8889" # Prometheus exporter
+
+  # Visualisasi Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger-tracing
+    ports:
+      - "16686:16686" # UI Jaeger
+
+  # Time-series DB untuk Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-metrics
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+
+  # Dashboard Visualisasi
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-dash
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://172.27.185.90:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+
+  elasticsearch:
+    image: elasticsearch:7.17.10
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+  kibana:
+    image: kibana:7.17.10
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+
 volumes:
   pg_data_compose:
+  es_data:

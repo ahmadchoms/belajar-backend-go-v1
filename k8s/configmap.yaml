@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-config
+data:
+  # App
+  APP_PORT: "8080"
+  
+  # Database (Arahkan ke Host Docker Compose)
+  DB_HOST: "172.27.185.90" 
+  DB_PORT: "5432"
+  DB_NAME: "inventory_db" # Sesuaikan dengan .env kamu
+  
+  # Redis
+  REDIS_HOST: "172.27.185.90"
+  REDIS_PORT: "6379"
+  
+  # Kafka
+  KAFKA_BROKERS: "172.27.185.90:9093" # Gunakan PORT EXTERNAL Kafka (lihat docker-compose)
+  
+  # Elasticsearch
+  ELASTICSEARCH_ADDRESS: "http://172.27.185.90:9200"
+  
+  # OTel
+  OTEL_COLLECTOR_ADDR: "172.27.185.90:4317"

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -12,15 +11,24 @@ import (
 	"phase3-api-architecture/handler"
 	"phase3-api-architecture/middleware"
 	pb "phase3-api-architecture/pb/proto/inventory"
+	"phase3-api-architecture/pkg/stream"
+	"phase3-api-architecture/pkg/telemetry"
 	"phase3-api-architecture/repository"
+	"strings"
 	"syscall"
 	"time"
 
 	_ "phase3-api-architecture/docs"
 
+	"github.com/XSAM/otelsql"
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -42,6 +50,16 @@ import (
 func main() {
 	middleware.InitLogger()
 
+	// Init Tracing
+	// Hubungkan ke OTel Collector
+	collectorAddr := os.Getenv("OTEL_COLLECTOR_ADDR")
+	shutdown := telemetry.InitTracer("inventory-api", collectorAddr)
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			log.Fatalf("failed to shutdown tracer: %v", err)
+		}
+	}()
+
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
@@ -54,14 +72,27 @@ func main() {
 		appPort = "8080"
 	}
 
+	// Database Instrumentation
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", dbHost, dbPort, dbUser, dbPass, dbName)
-	db, err := sql.Open("postgres", connStr)
+	db, err := otelsql.Open("postgres", connStr, otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL))
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err = db.Ping(); err != nil {
-		log.Fatal(err)
+
+	// Register Metrics DB (Connection Pool stats otomatis dikirim ke Prometheus)
+	shutdownDBMetrics, err := otelsql.RegisterDBStatsMetrics(
+		db,
+		otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL),
+	)
+	if err != nil {
+		log.Printf("Gagal register db metrics: %v", err)
 	}
+
+	defer func() {
+		if err := shutdownDBMetrics.Unregister(); err != nil {
+			log.Printf("Gagal unregister DB metrics: %v", err)
+		}
+	}()
 
 	defer db.Close()
 
@@ -69,10 +100,33 @@ func main() {
 		Addr: fmt.Sprintf("%s:%s", redisHost, redisPort),
 	})
 
-	productRepo := &repository.ProductRepository{DB: db, Redis: rdb}
+	// Enable Tracing di Redis
+	// if err := redisotel.InstrumentTracing(rdb); err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// Enable Metrics di Redis
+	if err := redisotel.InstrumentMetrics(rdb); err != nil {
+		log.Fatal(err)
+	}
+
+	kafkaAddr := os.Getenv("KAFKA_BROKERS")
+	if kafkaAddr == "" {
+		kafkaAddr = "kafka:9092" // Default untuk docker-compose
+	}
+	kafkaBrokers := strings.Split(kafkaAddr, ",")
+
+	// Gunakan variabel kafkaBrokers yg didapat dari Env
+	kafkaProducer := stream.NewKafkaProducer(kafkaBrokers)
+	defer kafkaProducer.Close()
+
+	productRepo := repository.NewProductRepository(db, rdb, kafkaProducer)
 	productHandler := &handler.ProductHandler{Repo: productRepo}
 	userRepo := &repository.UserRepository{DB: db}
 	authHandler := &handler.AuthHandler{Repo: userRepo}
+
+	// Allow 20 request/detik, dengan burst maksimal 30
+	rateLimitter := middleware.NewIPRateLimiter(rate.Limit(20), 30)
 
 	go func() {
 		lis, err := net.Listen("tcp", "[::]:50051") // Port gRPC biasanya
@@ -80,7 +134,9 @@ func main() {
 			log.Fatalf("Gagal listen port 50051: %v", err)
 		}
 
-		grpcServer := grpc.NewServer()
+		grpcServer := grpc.NewServer(
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		)
 
 		// Register Handler ke Server gRPC
 		inventoryGrpcHandler := &handler.GrpcInventoryHandler{Repo: productRepo}
@@ -94,7 +150,14 @@ func main() {
 		}
 	}()
 
+	// HTTP Router
 	mux := http.NewServeMux()
+
+	// Health Check Endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 
 	// Logger Only
 	stackLogger := func(h http.Handler) http.Handler {
@@ -139,9 +202,13 @@ func main() {
 	// Delete (DELETE)
 	mux.Handle("DELETE /products/{id}", stackAdmin(http.HandlerFunc(productHandler.HandleDeleteProduct)))
 
+	// Otomatis membuat "Span" untuk setiap req HTTP yang masuk
+	otelHandler := otelhttp.NewHandler(mux, "server-root")
+	finalHandler := rateLimitter.Limit(otelHandler)
+
 	srv := &http.Server{
 		Addr:         ":8080",
-		Handler:      mux,
+		Handler:      finalHandler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -167,7 +234,6 @@ func main() {
 		log.Println("Server forced to shutdown:", err)
 	}
 
-	db.Close()
 	rdb.Close()
 	fmt.Println("✅ Server mati dengan tenang.")
 }

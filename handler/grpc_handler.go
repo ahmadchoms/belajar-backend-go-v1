@@ -17,7 +17,7 @@ type GrpcInventoryHandler struct {
 }
 
 func (h *GrpcInventoryHandler) GetStock(ctx context.Context, req *pb.GetStockRequest) (*pb.GetStockResponse, error) {
-	product, err := h.Repo.GetByID(int(req.Id))
+	product, err := h.Repo.GetByID(ctx, int(req.Id))
 
 	if err != nil {
 		if err == sql.ErrNoRows {

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-api
+spec:
+  replicas: 2 # Kita jalanin 2 instance sekaligus!
+  selector:
+    matchLabels:
+      app: inventory-api
+  template:
+    metadata:
+      labels:
+        app: inventory-api
+    spec:
+      containers:
+        - name: inventory-api
+          image: inventory-api:v2
+          imagePullPolicy: Never # Ambil dari local minikube registry
+          ports:
+            - containerPort: 8080
+          
+          # Inject Environment Variables dari ConfigMap & Secret
+          envFrom:
+            - configMapRef:
+                name: inventory-config
+            - secretRef:
+                name: inventory-secret
+          
+          # SELF HEALING (PENTING!)
+          # Liveness: "Apakah kamu masih hidup?" (Kalau gagal -> Restart Container)
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          
+          # Readiness: "Apakah kamu siap terima traffic?" (Kalau gagal -> Cabut dari Load Balancer)
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            
+          # RESOURCE LIMITS (Wajib di Production)
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"

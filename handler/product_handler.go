@@ -2,8 +2,11 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"phase3-api-architecture/models"
+	"phase3-api-architecture/pkg/resiliency"
 	"phase3-api-architecture/repository"
 	"phase3-api-architecture/utils"
 	"strconv"
@@ -85,11 +88,21 @@ func (h *ProductHandler) GetAllProducts(w http.ResponseWriter, r *http.Request) 
 		Search: search,
 	}
 
-	products, err := h.Repo.GetAll(filter)
+	products, err := h.Repo.GetAll(r.Context(), filter)
 	if err != nil {
+		if errors.Is(err, resiliency.ErrServiceUnavailbale) {
+			w.Header().Set("Retry-After", "30") // Beritahu client coba 30 detik lagi
+			utils.ResponseError(w, http.StatusServiceUnavailable, "sistem sedang sibuk, silahkan coba beberapa saat lagi")
+			return
+		}
+
+		// Jika error biasa (DB mati, SQL salah, dll)
+		// Log aslinya agar tau di server
+		fmt.Printf("[ERROR] Failed to fetch products: %v\n", err)
 		utils.ResponseError(w, http.StatusInternalServerError, "Gagal mengambil data produk")
 		return
 	}
+
 	utils.ResponseJSON(w, http.StatusOK, "List semua produk", products)
 }
 
@@ -118,7 +131,7 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Repo.Create(p); err != nil {
+	if err := h.Repo.Create(r.Context(), &p); err != nil {
 		utils.ResponseError(w, http.StatusInternalServerError, "Gagal membuat produk")
 		return
 	}
@@ -138,7 +151,7 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /products/{id} [get]
 func (h *ProductHandler) GetProductByID(w http.ResponseWriter, r *http.Request, id int) {
-	product, err := h.Repo.GetByID(id)
+	product, err := h.Repo.GetByID(r.Context(), id)
 	if err != nil {
 		utils.ResponseError(w, http.StatusNotFound, "Produk tidak ditemukan")
 		return
@@ -174,13 +187,13 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	_, err := h.Repo.GetByID(id)
+	_, err := h.Repo.GetByID(r.Context(), id)
 	if err != nil {
 		utils.ResponseError(w, http.StatusNotFound, "Produk tidak ditemukan")
 		return
 	}
 
-	if err := h.Repo.Update(p); err != nil {
+	if err := h.Repo.Update(r.Context(), &p); err != nil {
 		utils.ResponseError(w, http.StatusInternalServerError, "Gagal mengupdate produk")
 		return
 	}
@@ -200,13 +213,13 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request, i
 // @Security     BearerAuth
 // @Router       /products/{id} [delete]
 func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request, id int) {
-	_, err := h.Repo.GetByID(id)
+	_, err := h.Repo.GetByID(r.Context(), id)
 	if err != nil {
 		utils.ResponseError(w, http.StatusNotFound, "Produk tidak ditemukan")
 		return
 	}
 
-	if err := h.Repo.Delete(id); err != nil {
+	if err := h.Repo.Delete(r.Context(), id); err != nil {
 		utils.ResponseError(w, http.StatusInternalServerError, "Gagal menghapus produk")
 		return
 	}
