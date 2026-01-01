@@ -34,7 +34,7 @@ api:
 # WORKER CONFIG
 worker:
   enabled: true
-  replicaCount: 1
+  replicaCount: 3
   image:
     repository: docker.io/library/inventory-worker
     tag: "v1"
