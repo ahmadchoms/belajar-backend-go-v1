@@ -1,0 +1,41 @@
+env:
+  appEnv: "production"
+  
+  # Arahkan ke Laptop Host (Docker Compose)
+  dbHost: "172.27.185.90" 
+  dbPort: "5432"
+  dbUser: "root"
+  dbName: "belajargo"
+  
+  kafkaBrokers: "172.27.185.90:9093"
+  redisHost: "172.27.185.90:6379"
+  otelExporterEndpoint: "172.27.185.90:4317"
+
+# API CONFIG
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: docker.io/library/inventory-api
+    tag: "v1" 
+    pullPolicy: Never # Gunakan 'Never' kalau image lokal (belum push ke DockerHub)
+  service:
+    type: NodePort
+    port: 8080   # <--- Samakan dengan kode Go
+    nodePort: 30000 
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# WORKER CONFIG
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: docker.io/library/inventory-worker
+    tag: "v1"
+    pullPolicy: Never

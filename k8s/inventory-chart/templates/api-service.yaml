@@ -1,0 +1,14 @@
+{{- if .Values.api.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+spec:
+  type: {{ .Values.api.service.type }}
+  selector:
+    app: {{ .Release.Name }}-api
+  ports:
+    - port: 80
+      targetPort: {{ .Values.api.service.port }}
+      nodePort: {{ .Values.api.service.nodePort }}
+{{- end }}
