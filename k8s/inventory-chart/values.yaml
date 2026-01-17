@@ -16,7 +16,7 @@ api:
   enabled: true
   replicaCount: 2
   image:
-    repository: ahmadchoms/invetory-api
+    repository: ahmadchoms/inventory-api
     tag: "v3" 
     pullPolicy: IfNotPresent
   service:
@@ -36,6 +36,6 @@ worker:
   enabled: true
   replicaCount: 3
   image:
-    repository: ahmadchoms/invetory-worker
+    repository: ahmadchoms/inventory-worker
     tag: "v3"
     pullPolicy: Never
